@@ -1,5 +1,5 @@
 {
-  "extends": "@repo/typescript-config/web.json",
+  "extends": "@repo/typescript-config/native.json",
   "compilerOptions": {
     "strict": true,
     "paths": {

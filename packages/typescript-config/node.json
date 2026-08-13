@@ -4,8 +4,6 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "types": ["node"],
-    "jsxImportSource": "hono/jsx",
-    "rootDir": "./src",
-    "outDir": "./dist"
+    "jsxImportSource": "hono/jsx"
   }
 }

@@ -118,9 +118,6 @@ importers:
       '@react-router/serve':
         specifier: ^8
         version: 8.3.0(react-router@8.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(supports-color@8.1.1)(typescript@7.0.2)
-      api:
-        specifier: workspace:*
-        version: link:../api
       isbot:
         specifier: ^5.1.36
         version: 5.2.1

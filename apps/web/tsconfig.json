@@ -2,16 +2,16 @@
   "extends": "@repo/typescript-config/web.json",
   "compilerOptions": {
     "strict": true,
+    "rootDirs": [".", "./.react-router/types"],
     "paths": {
       "@/*": ["./*"]
     }
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "next-env.d.ts",
-    "next.config.js",
-    ".next/types/**/*.ts"
+    "**/*",
+    "**/.server/**/*",
+    "**/.client/**/*",
+    ".react-router/types/**/*"
   ],
   "exclude": ["node_modules"]
 }

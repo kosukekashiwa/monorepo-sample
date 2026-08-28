@@ -1,0 +1,263 @@
+##############################################################################
+# GitLab CI/CD - CI部分 (install / lint / test / build)
+#
+# ブランチ運用: develop / main
+#   - Merge Request パイプライン: develop・main向けMRで全ジョブを実行(品質ゲート)
+#   - develop / main への push(マージ): 同じ検証を実行
+#   - deploy stage は未実装。staging/production環境が決まり次第、
+#     本ファイル末尾の `# TODO: deploy stage` に追記する
+#
+# 前提: TurboRepo + pnpm モノレポ
+#   apps/app      : Expo Router (mobile/web)
+#   apps/admin    : React + Vite
+#   apps/api(仮)  : Hono backend
+#   packages/*    : 共有パッケージ (core, db 等)
+##############################################################################
+
+stages:
+  - install
+  - lint
+  - test
+  - build
+  # - deploy   # TODO: staging/production環境確定後に追加
+
+workflow:
+  rules:
+    # develop / main 向けの Merge Request パイプライン
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && ($CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop" || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main")'
+    # develop / main への直接push(マージ後)のパイプライン
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "main")'
+    # タグpush(リリースビルド用。現時点ではCIジョブのみ、配布は別途)
+    - if: '$CI_COMMIT_TAG'
+
+variables:
+  # affected filtering (turbo --filter=...[base]) のために全履歴を取得
+  GIT_DEPTH: "0"
+  PNPM_STORE_DIR: ".pnpm-store"
+
+default:
+  image: node:22-slim
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@latest --activate
+    - pnpm config set store-dir $PNPM_STORE_DIR
+
+# pnpmの依存キャッシュ。lockfileが変わらない限り再利用する
+.pnpm_cache: &pnpm_cache
+  key:
+    files:
+      - pnpm-lock.yaml
+  paths:
+    - $PNPM_STORE_DIR
+  policy: pull
+
+##############################################################################
+# install
+##############################################################################
+
+install:
+  stage: install
+  cache:
+    <<: *pnpm_cache
+    policy: pull-push
+  script:
+    - pnpm install --frozen-lockfile
+  artifacts:
+    expire_in: 1 hour
+    paths:
+      - node_modules
+      - apps/*/node_modules
+      - packages/*/node_modules
+
+##############################################################################
+# lint / typecheck
+#
+# TurboRepoのaffected filteringで「変更のあったパッケージ」だけを対象にする。
+# base refはMRならターゲットブランチ、pushならdefault branchの1つ前を使う。
+##############################################################################
+
+.turbo_affected_base: &turbo_affected_base
+  before_script:
+    - !reference [default, before_script]
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --depth=1
+        export TURBO_BASE="origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      elif [ -n "$CI_COMMIT_BEFORE_SHA" ] && [ "$CI_COMMIT_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+        # 通常のpush(develop/mainへのマージ反映)。GitLabが計算した「直前のSHA」を使う。
+        # HEAD~1決め打ちだとsquash merge等で親が存在せず落ちることがあるため使わない。
+        git fetch origin "$CI_COMMIT_BEFORE_SHA" --depth=1 || true
+        export TURBO_BASE="$CI_COMMIT_BEFORE_SHA"
+      else
+        # 新規ブランチの初回push・force push等でbefore_shaが取得できない場合のフォールバック
+        git fetch origin "$CI_DEFAULT_BRANCH" --depth=1
+        export TURBO_BASE="origin/$CI_DEFAULT_BRANCH"
+      fi
+
+lint:
+  stage: lint
+  <<: *turbo_affected_base
+  cache:
+    <<: *pnpm_cache
+  needs: ["install"]
+  script:
+    - pnpm turbo run lint --filter="...[$TURBO_BASE]"
+
+typecheck:
+  stage: lint
+  <<: *turbo_affected_base
+  cache:
+    <<: *pnpm_cache
+  needs: ["install"]
+  script:
+    - pnpm turbo run typecheck --filter="...[$TURBO_BASE]"
+
+# 依存パッケージの脆弱性チェック。high以上の脆弱性があればジョブを失敗させる。
+# affected filteringはかけず、モノレポ全体のlockfileを毎回チェックする
+# (変更していないパッケージに後から脆弱性が見つかるケースがあるため)。
+dependency-audit:
+  stage: lint
+  needs: ["install"]
+  cache:
+    <<: *pnpm_cache
+  script:
+    - pnpm audit --audit-level=high
+  allow_failure: false
+
+# OpenAPI定義とorval生成クライアントのズレを検知する
+openapi-drift-check:
+  stage: lint
+  <<: *turbo_affected_base
+  cache:
+    <<: *pnpm_cache
+  needs: ["install"]
+  rules:
+    - changes:
+        - apps/api/**/*
+        - packages/api-client/**/*
+  script:
+    - pnpm turbo run generate:client --filter=@repo/api-client
+    - git diff --exit-code -- packages/api-client
+    # ↑ orval生成物がコミット済み内容と一致しない場合はここで失敗する
+
+##############################################################################
+# test
+##############################################################################
+
+unit-test:
+  stage: test
+  <<: *turbo_affected_base
+  cache:
+    <<: *pnpm_cache
+  needs: ["install"]
+  script:
+    - pnpm turbo run test --filter="...[$TURBO_BASE]"
+
+# RLS(Row Level Security)の統合テスト。
+# PGLiteではRLSを意味のある形で検証できないため、実PostgreSQLコンテナを使う。
+rls-integration-test:
+  stage: test
+  needs: ["install"]
+  rules:
+    - changes:
+        - apps/api/**/*
+        - packages/db/**/*
+  services:
+    - name: postgres:16
+      alias: postgres
+  variables:
+    POSTGRES_DB: app_test
+    POSTGRES_USER: app_test
+    POSTGRES_PASSWORD: app_test
+    DATABASE_URL: "postgres://app_test:app_test@postgres:5432/app_test"
+  script:
+    - pnpm --filter @repo/db run migrate
+    - pnpm --filter @repo/api run test:integration
+
+##############################################################################
+# build
+##############################################################################
+
+build:web:
+  stage: build
+  <<: *turbo_affected_base
+  cache:
+    <<: *pnpm_cache
+  needs: ["lint", "typecheck", "unit-test"]
+  script:
+    # apps/app (Expo Router web出力) と apps/admin (Vite) をまとめてビルド
+    - pnpm turbo run build --filter="...[$TURBO_BASE]" --filter=./apps/app --filter=./apps/admin
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - apps/app/dist
+      - apps/admin/dist
+
+build:api:
+  stage: build
+  <<: *turbo_affected_base
+  cache:
+    <<: *pnpm_cache
+  needs: ["lint", "typecheck", "unit-test"]
+  rules:
+    - changes:
+        - apps/api/**/*
+        - packages/**/*
+  script:
+    - pnpm turbo run build --filter=./apps/api
+
+# モバイルネイティブビルド。EASのcloud実行費用と時間がかかるため、
+# 毎MRではなく develop/main へのマージ時のみ・手動トリガーで実行する。
+build:mobile:
+  stage: build
+  needs: ["lint", "typecheck", "unit-test"]
+  tags:
+    - macos # 自己ホストmacOS runner。GitLab側のrunner登録タグに合わせて要調整
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "main")'
+      when: manual
+      allow_failure: true
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm --filter ./apps/app exec eas build --local --platform ios --non-interactive
+    - pnpm --filter ./apps/app exec eas build --local --platform android --non-interactive
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - apps/app/*.ipa
+      - apps/app/*.apk
+
+# Tauriデスクトップビルド(Windows)。Rustのビルドキャッシュを効かせる。
+build:desktop:
+  stage: build
+  needs: ["lint", "typecheck", "unit-test"]
+  tags:
+    - windows # Rust/Tauriビルド用Windows runner。GitLab側のrunner登録タグに合わせて要調整
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "main")'
+      when: manual
+      allow_failure: true
+    - changes:
+        - apps/desktop/**/*
+      when: manual
+      allow_failure: true
+  cache:
+    key: rust-cargo
+    paths:
+      - apps/desktop/src-tauri/target
+      - "$CARGO_HOME"
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm --filter ./apps/desktop run tauri build
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - apps/desktop/src-tauri/target/release/bundle
+
+##############################################################################
+# TODO: deploy stage
+#
+# staging/production環境の構築が完了したら、以下のようなジョブを追加する想定:
+#   deploy:staging  - develop への push で自動デプロイ (environment: staging)
+#   deploy:production - main への push で手動承認デプロイ (environment: production, when: manual)
+##############################################################################

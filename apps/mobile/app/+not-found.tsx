@@ -1,5 +1,6 @@
 import { Link, Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 
 export default function NotFoundScreen() {
   return (
@@ -16,23 +17,25 @@ export default function NotFoundScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: theme.gap(5),
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
+    color: theme.colors.text,
   },
   link: {
-    marginTop: 15,
-    paddingVertical: 15,
+    marginTop: theme.gap(4),
+    paddingVertical: theme.gap(4),
   },
   linkText: {
     fontSize: 14,
-    color: '#2e78b7',
+    color: theme.colors.link,
   },
-});
+}));

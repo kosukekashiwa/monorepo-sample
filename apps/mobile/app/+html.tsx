@@ -1,3 +1,5 @@
+import '../styles/unistyles';
+
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { ReactNode } from 'react';
 

@@ -1,9 +1,6 @@
 import { createContext, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import Animated, { LinearTransition } from 'react-native-reanimated';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StyleSheet } from 'react-native-unistyles';
 
-import { Banner, type BannerProps } from './Banner';
+import type { BannerProps } from './Banner';
 
 export type BannerOptions = Omit<BannerProps, 'show' | 'safeAreaTop'>;
 
@@ -14,14 +11,18 @@ export type BannerApi = {
   hide: (id?: string) => void;
 };
 
-type BannerItem = BannerOptions & { id: string };
+export type BannerItem = BannerOptions & { id: string };
 
 export const BannerContext = createContext<BannerApi | null>(null);
+
+/** The banner currently shown. Read by `BannerOutlet`; kept separate so `useBanner` callers don't re-render. */
+export const BannerStateContext = createContext<BannerItem | null>(null);
 
 type BannerProviderProps = {
   children: ReactNode;
 };
 
+/** Holds the banner state. The banner itself is rendered wherever `BannerOutlet` is placed. */
 export function BannerProvider({ children }: BannerProviderProps) {
   const [banner, setBanner] = useState<BannerItem | null>(null);
   const nextId = useRef(0);
@@ -40,41 +41,7 @@ export function BannerProvider({ children }: BannerProviderProps) {
 
   return (
     <BannerContext.Provider value={api}>
-      <Animated.View style={styles.root} layout={LinearTransition}>
-        {banner ? <CurrentBanner banner={banner} hide={hide} key={banner.id} /> : null}
-        {/*
-          A nested provider measures insets from its own frame, so screens (and the
-          navigation header) below the banner don't add the status bar inset again.
-        */}
-        <Animated.View style={styles.content} layout={LinearTransition}>
-          <SafeAreaProvider>{children}</SafeAreaProvider>
-        </Animated.View>
-      </Animated.View>
+      <BannerStateContext.Provider value={banner}>{children}</BannerStateContext.Provider>
     </BannerContext.Provider>
   );
 }
-
-function CurrentBanner({ banner, hide }: { banner: BannerItem; hide: (id: string) => void }) {
-  const { id, onDismiss, ...options } = banner;
-
-  return (
-    <Banner
-      {...options}
-      show
-      safeAreaTop
-      onDismiss={() => {
-        hide(id);
-        onDismiss?.();
-      }}
-    />
-  );
-}
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-  },
-});

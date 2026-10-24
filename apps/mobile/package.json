@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
@@ -14,20 +14,25 @@
     "expo-linking": "~57.0.5",
     "expo-router": "~57.0.11",
     "expo-splash-screen": "~57.0.5",
+    "lucide-react-native": "1.61.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-native": "0.86.2",
+    "react-native-nitro-modules": "0.37.1",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
+    "react-native-unistyles": "3.6.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
-    "typescript": "catalog:",
     "@repo/eslint-config": "workspace:*",
-    "@repo/typescript-config": "workspace:*"
+    "@repo/typescript-config": "workspace:*",
+    "@types/react": "~19.2.2",
+    "babel-preset-expo": "~57.0.6",
+    "typescript": "catalog:"
   },
   "private": true
 }

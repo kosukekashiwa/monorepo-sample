@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
+import { BannerScreenLayout } from '@/components/feedback/banner/BannerOutlet';
 import { BannerProvider } from '@/components/feedback/banner/BannerProvider';
 import { ToastProvider } from '@/components/feedback/toast/ToastProvider';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -28,7 +29,13 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <ToastProvider>
         <BannerProvider>
-          <Stack />
+          <Stack
+            screenLayout={({ children, options }) => (
+              <BannerScreenLayout headerShown={options.headerShown !== false}>
+                {children}
+              </BannerScreenLayout>
+            )}
+          />
         </BannerProvider>
       </ToastProvider>
     </ThemeProvider>

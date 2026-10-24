@@ -6,7 +6,7 @@
 |---|---|---|---|
 | `Dialog` | 確認・選択など、ユーザーの判断が必要なとき | 画面中央（モーダル） | ユーザーが操作して閉じる |
 | `Toast` | 処理結果などの一時的な通知 | 画面上部に**重ねて**表示 | 時間経過（既定 3 秒）。`duration: null` で持続 |
-| `Banner` | 対応を促す持続的な通知（未確認メール、オフラインなど） | 画面上部に**差し込み**、コンテンツを押し下げる | アクションまたは閉じるボタンが押されるまで持続 |
+| `Banner` | 対応を促す持続的な通知（未確認メール、オフラインなど） | ヘッダーの下に**差し込み**、コンテンツを押し下げる | アクションまたは閉じるボタンが押されるまで持続 |
 
 すべて named export です。各ファイルから直接 import してください。
 
@@ -21,7 +21,8 @@ components/feedback/
 │   └── useToast.ts
 └── banner/
     ├── Banner.tsx
-    ├── BannerProvider.tsx
+    ├── BannerProvider.tsx   # Banner の状態を保持
+    ├── BannerOutlet.tsx     # BannerOutlet（描画場所）と BannerScreenLayout
     └── useBanner.ts
 ```
 
@@ -55,14 +56,22 @@ type FeedbackAction = {
 <ThemeProvider value={...}>
   <ToastProvider>
     <BannerProvider>
-      <Stack />
+      <Stack
+        screenLayout={({ children, options }) => (
+          <BannerScreenLayout headerShown={options.headerShown !== false}>
+            {children}
+          </BannerScreenLayout>
+        )}
+      />
     </BannerProvider>
   </ToastProvider>
 </ThemeProvider>
 ```
 
-- `ToastProvider` を外側に置くことで、Toast は Banner より手前に表示されます。
-- `BannerProvider` は `Stack` を包んでいるため、Banner は画面遷移しても表示されたままです。Banner の表示中は、ヘッダーを含む画面全体が Banner の高さ分押し下げられます。
+- `ToastProvider` を外側に置くことで、Toast はヘッダーや Banner より手前に表示されます。
+- `BannerProvider` は Banner の状態だけを持ち、描画はしません。Banner は `BannerOutlet` を置いた位置に表示されます。
+- `Stack` の `screenLayout` で各画面を `BannerScreenLayout` で包んでいるため、Banner はヘッダーの下、画面コンテンツの上に差し込まれます。
+- 状態は `BannerProvider` で共有しているため、Banner は画面遷移しても表示されたままです。
 
 ## Dialog
 
@@ -180,9 +189,28 @@ const id = banner.show({ variant: 'error', message: 'オフラインです', dis
 banner.hide(id);
 ```
 
-- 画面上部に差し込まれ、画面のコンテンツ（ヘッダー含む）を押し下げます。
+- ヘッダーの下に差し込まれ、画面のコンテンツを押し下げます。ヘッダーは動きません。
+- `headerShown: false` の画面では、画面の最上部（ステータスバーの下）に表示されます。
 - 時間経過では消えません。ユーザーがアクションか閉じるボタンを押すか、`hide()` を呼ぶまで表示されます。
 - 同時に表示されるのは 1 件のみです。`show()` を呼ぶと現在の Banner を置き換えます。
+
+### 表示位置の仕組み
+
+```
+┌───────────────────┐
+│ ヘッダー          │ ← ネイティブのヘッダー（固定）
+├───────────────────┤
+│ Banner            │ ← BannerOutlet
+├───────────────────┤
+│ 画面コンテンツ    │ ← 押し下げられる
+└───────────────────┘
+```
+
+- `BannerScreenLayout` は `BannerOutlet` と画面コンテンツを縦に並べ、Banner の表示・非表示に合わせてコンテンツの位置をアニメーションさせます。
+- `screenLayout` はスタック上の全画面を包むため、裏にある前の画面にも同じ Banner が描画されます（見えないので表示上は問題ありません）。
+- 別の場所に Banner を出したい場合は、`BannerProvider` の内側の任意の位置に `<BannerOutlet />` を置きます。ウィンドウの上端に置く場合は `safeAreaTop` を指定すると、ステータスバー分の余白が入ります。
+
+### Banner コンポーネント単体
 
 `Banner` コンポーネント単体（`show` で表示を切り替え）も export しているので、Provider を使わず特定の画面内に置くこともできます。画面の上端（ステータスバーの下）に置く場合は `safeAreaTop` を指定すると、ステータスバー分の余白が入ります。
 

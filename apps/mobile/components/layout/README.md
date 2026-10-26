@@ -6,11 +6,107 @@
 
 ```
 components/layout/
+├── app-chrome/
+│   ├── AppChromeProvider.tsx  # ヘッダー・フッタの表示状態を共有
+│   ├── useAppChrome.ts
+│   ├── useHideOnScroll.ts     # スクロール方向で表示・非表示を切り替えるハンドラ
+│   └── ChromeScrollView.tsx   # 上記を組み込んだ ScrollView
+├── app-header/
+│   └── AppHeader.tsx          # アプリ名を表示するヘッダー
+├── tab-bar/
+│   └── TabBar.tsx             # タブ切り替え用のフッタ
 └── image-gallery/
     ├── types.ts           # GalleryImageSource, MAX_GALLERY_IMAGES
     ├── ImageGallery.tsx   # プレビュー表示（最大 4 枚）
     ├── ImageViewer.tsx    # 拡大表示（全画面）
     └── GalleryImage.tsx   # 読み込み失敗時のフォールバック付き画像
+```
+
+## AppHeader / TabBar
+
+タブ画面の上部にアプリ名を表示する `AppHeader` と、下部でタブを切り替える `TabBar` です。どちらも画面の上に重ねて表示し、下スクロールでフェードアウト、上スクロールで再表示されます。
+
+### セットアップ
+
+`app/(tabs)/_layout.tsx` で、expo-router の `Tabs` に組み込んでいます。
+
+```tsx
+import { Tabs } from 'expo-router/js-tabs';
+
+<AppChromeProvider>
+  <View style={{ flex: 1 }}>
+    <Tabs tabBar={(props) => <TabBar {...props} />} screenOptions={{ headerShown: false }}>
+      <Tabs.Screen
+        name="index"
+        options={{ title: 'ホーム', tabBarIcon: ({ color, size }) => <House color={color} size={size} /> }}
+      />
+      {/* ... */}
+    </Tabs>
+    <AppHeader>
+      <BannerOutlet />
+    </AppHeader>
+  </View>
+</AppChromeProvider>
+```
+
+サンプルとして次の 5 つのタブを用意しています（各画面の中身は `components/sample/SampleScreen.tsx` のダミーリスト）。
+
+| ファイル | タイトル | アイコン |
+|---|---|---|
+| `app/(tabs)/index.tsx` | ホーム | `House` |
+| `app/(tabs)/search.tsx` | 検索 | `Search` |
+| `app/(tabs)/post.tsx` | 投稿 | `SquarePlus` |
+| `app/(tabs)/notifications.tsx` | 通知 | `Bell` |
+| `app/(tabs)/profile.tsx` | マイページ | `User` |
+
+タブを追加・変更するときは、`app/(tabs)/` にファイルを置き、`_layout.tsx` に `Tabs.Screen` を追加して `title` と `tabBarIcon` を指定します。
+
+### AppHeader
+
+```ts
+type AppHeaderProps = {
+  title?: string;       // 既定は app.json の expo.name
+  children?: ReactNode; // ヘッダーの直下に表示する内容（例: <BannerOutlet />）
+};
+```
+
+- ステータスバーの下に、高さ 52px のバーでタイトルを表示します。
+- `children` はヘッダーと一緒に上へ移動しますが、フェードアウトはしません。`<BannerOutlet />` を渡すと Banner がヘッダーの下に差し込まれ、ヘッダーが隠れると画面上部へ詰めて表示されます。
+
+### TabBar
+
+`<Tabs tabBar={(props) => <TabBar {...props} />}>` として使います。各画面の `title` と `tabBarIcon` オプションを表示し、選択中のタブはテーマの `colors.link`、それ以外は `colors.textMuted` で表示します。タブを押すと、ヘッダーとフッタを再表示します。
+
+### スクロールで隠す
+
+画面の中身には `ChromeScrollView` を使います。
+
+```tsx
+import { ChromeScrollView } from '@/components/layout/app-chrome/ChromeScrollView';
+
+export default function HomeScreen() {
+  return <ChromeScrollView>{/* ... */}</ChromeScrollView>;
+}
+```
+
+- ヘッダー・フッタ（と Banner）に隠れないよう、内容の上下に自動で余白を付けます。ヘッダー・フッタが隠れても余白は変わらないので、中身の位置は動きません。
+- 下スクロールでヘッダーとフッタを隠し、上スクロールで再表示します。4px 未満の動きは無視します。
+- 最上部ではいつも表示します。最下部でのバウンスは上スクロールとして扱いません。
+- 隠れるときはフェードアウトしながら、ヘッダーはバーの高さ分だけ上へ、フッタは画面外へ移動します（隠れたフッタを誤って押さないため）。
+
+`FlatList` などを使う場合は、Reanimated の `Animated.FlatList` に `useHideOnScroll()` のハンドラを渡し、`useAppChrome()` の `topInset` / `bottomInset` を余白に使います。
+
+```tsx
+const onScroll = useHideOnScroll();
+const { topInset, bottomInset } = useAppChrome();
+
+<Animated.FlatList
+  data={items}
+  renderItem={renderItem}
+  onScroll={onScroll}
+  scrollEventThrottle={16}
+  contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
+/>
 ```
 
 ## ImageGallery

@@ -7,5 +7,13 @@
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "test",
+    "vitest.config.mts",
+    "vitest.setup.ts",
+    "vitest.polyfills.ts"
+  ]
 }

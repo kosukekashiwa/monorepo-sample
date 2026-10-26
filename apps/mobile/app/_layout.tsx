@@ -30,12 +30,19 @@ export default function RootLayout() {
       <ToastProvider>
         <BannerProvider>
           <Stack
-            screenLayout={({ children, options }) => (
-              <BannerScreenLayout headerShown={options.headerShown !== false}>
-                {children}
-              </BannerScreenLayout>
-            )}
-          />
+            screenLayout={({ children, options, route }) =>
+              // The tabs render the banner below their own AppHeader.
+              route.name === '(tabs)' ? (
+                children
+              ) : (
+                <BannerScreenLayout headerShown={options.headerShown !== false}>
+                  {children}
+                </BannerScreenLayout>
+              )
+            }
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          </Stack>
         </BannerProvider>
       </ToastProvider>
     </ThemeProvider>

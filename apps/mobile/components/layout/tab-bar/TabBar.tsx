@@ -54,7 +54,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             onPress={onPress}
             onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
             accessibilityRole="tab"
-            accessibilityState={{ selected: focused }}
+            aria-selected={focused}
             accessibilityLabel={options.tabBarAccessibilityLabel ?? label}
           >
             {options.tabBarIcon?.({ focused, color, size: 24 })}
